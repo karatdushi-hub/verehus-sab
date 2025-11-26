@@ -1,0 +1,353 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
+local LocalPlayer = Players.LocalPlayer
+
+local oldGui = LocalPlayer.PlayerGui:FindFirstChild("RombHub_SaB")
+if oldGui then
+	oldGui:Destroy()
+end
+
+local function playSound(id)
+	local sound = Instance.new("Sound")
+	sound.SoundId = "rbxassetid://" .. tostring(id)
+	sound.Volume = 0.55
+	sound.Parent = SoundService
+	sound:Play()
+	task.delay(2, function() sound:Destroy() end)
+end
+
+local espActive = false
+local jumpKey = "Q"
+local espKey = ""
+local inputConnection = nil
+local playerHighlights = {}
+
+local function createHighlight(player)
+	if player.Character and not player.Character:FindFirstChild("ESPHighlight") then
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "ESPHighlight"
+		highlight.FillColor = Color3.fromHSV(math.random(), 0.9, 1)
+		highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+		highlight.FillTransparency = 0.65
+		highlight.OutlineTransparency = 0.1
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.Adornee = player.Character
+		highlight.Parent = player.Character
+		playerHighlights[player] = highlight
+	end
+end
+
+local function updateHighlight(player)
+	if player.Character and player.Character:FindFirstChild("ESPHighlight") and player.Character:FindFirstChild("Humanoid") then
+		if player.Character.Humanoid.Health <= 0 then
+			player.Character.ESPHighlight.FillColor = Color3.fromRGB(100, 0, 0)
+		else
+			player.Character.ESPHighlight.FillColor = Color3.fromHSV(math.random(), 0.9, 1)
+		end
+	end
+end
+
+local function setupESP(player)
+	if player ~= LocalPlayer then
+		player.CharacterAdded:Connect(function()
+			task.wait(0.2)
+			if espActive then
+				createHighlight(player)
+			end
+		end)
+		if player.Character and espActive then
+			createHighlight(player)
+		end
+	end
+end
+
+local function startESP()
+	if espActive then return end
+	espActive = true
+	for _, plr in ipairs(Players:GetPlayers()) do
+		setupESP(plr)
+	end
+	Players.PlayerAdded:Connect(setupESP)
+end
+
+local function stopESP()
+	if not espActive then return end
+	espActive = false
+	for player, highlight in pairs(playerHighlights) do
+		if highlight and highlight.Parent then
+			highlight:Destroy()
+		end
+	end
+	playerHighlights = {}
+end
+
+local function boostJump()
+	local char = LocalPlayer.Character
+	if char then
+		local root = char:FindFirstChild("HumanoidRootPart")
+		if root then
+			root.Velocity = Vector3.new(0, 74.5, 0)
+		end
+	end
+end
+
+local function updateKeybinds()
+	if inputConnection then
+		inputConnection:Disconnect()
+	end
+	inputConnection = UserInputService.InputBegan:Connect(function(input, gpe)
+		if gpe then return end
+		if input.KeyCode.Name == jumpKey then
+			boostJump()
+		end
+		if input.KeyCode.Name == espKey then
+			if espActive then
+				stopESP()
+			else
+				startESP()
+			end
+		end
+	end)
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "RombHub_SaB"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 480, 0, 220)
+frame.Position = UDim2.new(0.5, -240, 0.5, -110)
+frame.BackgroundColor3 = Color3.fromRGB(15, 12, 22)
+frame.BackgroundTransparency = 0.38
+frame.BorderSizePixel = 0
+frame.Parent = gui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 20)
+mainCorner.Parent = frame
+
+local stroke = Instance.new("UIStroke")
+stroke.Thickness = 2
+stroke.Transparency = 0.25
+stroke.Parent = frame
+
+spawn(function()
+	local t = 0
+	while stroke and stroke.Parent do
+		t = t + RunService.Heartbeat:Wait()
+		local hue = (t * 0.1) % 1
+		stroke.Color = Color3.fromHSV(hue, 0.8, 1)
+	end
+end)
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 46)
+titleBar.BackgroundColor3 = Color3.fromRGB(25, 20, 35)
+titleBar.BackgroundTransparency = 0.22
+titleBar.BorderSizePixel = 0
+titleBar.Parent = frame
+
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 20)
+titleCorner.Parent = titleBar
+
+local titleText = Instance.new("TextLabel")
+titleText.Size = UDim2.new(1, -100, 1, 0)
+titleText.Position = UDim2.new(0, 20, 0, 0)
+titleText.BackgroundTransparency = 1
+titleText.Text = "Romb Hub - SaB"
+titleText.TextColor3 = Color3.fromRGB(250, 250, 255)
+titleText.Font = Enum.Font.GothamBlack
+titleText.TextSize = 20
+titleText.Parent = titleBar
+
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0, 34, 0, 34)
+toggleBtn.Position = UDim2.new(1, -100, 0.5, -17)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 50, 90)
+toggleBtn.Text = "−"
+toggleBtn.TextColor3 = Color3.fromRGB(220, 220, 250)
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 22
+toggleBtn.AutoButtonColor = false
+toggleBtn.BorderSizePixel = 0
+toggleBtn.Parent = titleBar
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 34, 0, 34)
+closeBtn.Position = UDim2.new(1, -140, 0.5, -17)
+closeBtn.BackgroundColor3 = Color3.fromRGB(210, 60, 85)
+closeBtn.Text = "✖"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 22
+closeBtn.AutoButtonColor = false
+closeBtn.BorderSizePixel = 0
+closeBtn.Parent = titleBar
+
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -40, 0, 130)
+content.Position = UDim2.new(0, 20, 0, 60)
+content.BackgroundTransparency = 1
+content.Parent = frame
+
+-- === Jump Boost ===
+local btnJump = Instance.new("TextButton")
+btnJump.Size = UDim2.new(0, 200, 0, 40)
+btnJump.Position = UDim2.new(0, 0, 0, 0)
+btnJump.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
+btnJump.BackgroundTransparency = 0.35
+btnJump.BorderSizePixel = 0
+btnJump.AutoButtonColor = false
+btnJump.Text = "Jump Boost"
+btnJump.TextColor3 = Color3.fromRGB(240, 240, 255)
+btnJump.Font = Enum.Font.GothamBold
+btnJump.TextSize = 17
+btnJump.Parent = content
+
+btnJump.MouseEnter:Connect(function() playSound(408524543) end)
+btnJump.MouseButton1Click:Connect(function()
+	playSound(4307186075)
+	boostJump()
+end)
+
+local jumpKeybind = Instance.new("TextBox")
+jumpKeybind.Size = UDim2.new(0, 80, 0, 40)
+jumpKeybind.Position = UDim2.new(0, 220, 0, 0)
+jumpKeybind.BackgroundTransparency = 0.6
+jumpKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
+jumpKeybind.Text = jumpKey
+jumpKeybind.PlaceholderText = "Q"
+jumpKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
+jumpKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
+jumpKeybind.Font = Enum.Font.GothamBlack
+jumpKeybind.TextSize = 20
+jumpKeybind.TextXAlignment = Enum.TextXAlignment.Center
+jumpKeybind.ClearTextOnFocus = true
+jumpKeybind.Parent = content
+
+local jumpStroke = Instance.new("UIStroke")
+jumpStroke.Color = Color3.fromRGB(100, 90, 140)
+jumpStroke.Thickness = 1.5
+jumpStroke.Transparency = 0.5
+jumpStroke.Parent = jumpKeybind
+
+jumpKeybind.FocusLost:Connect(function(enterPressed)
+	local t = jumpKeybind.Text:upper():gsub("[^A-Z]", "")
+	if t:len() > 1 then t = t:sub(1, 1) end
+	jumpKeybind.Text = t
+	jumpKey = t
+	updateKeybinds()
+	if enterPressed then jumpKeybind:ReleaseFocus() end
+end)
+
+-- === ESP Toggle ===
+local btnESP = Instance.new("TextButton")
+btnESP.Size = UDim2.new(0, 200, 0, 40)
+btnESP.Position = UDim2.new(0, 0, 0, 50)
+btnESP.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
+btnESP.BackgroundTransparency = 0.35
+btnESP.BorderSizePixel = 0
+btnESP.AutoButtonColor = false
+btnESP.Text = "ESP Toggle"
+btnESP.TextColor3 = Color3.fromRGB(240, 240, 255)
+btnESP.Font = Enum.Font.GothamBold
+btnESP.TextSize = 17
+btnESP.Parent = content
+
+btnESP.MouseEnter:Connect(function() playSound(408524543) end)
+btnESP.MouseButton1Click:Connect(function()
+	playSound(4307186075)
+	if espActive then
+		stopESP()
+	else
+		startESP()
+	end
+end)
+
+local espKeybind = Instance.new("TextBox")
+espKeybind.Size = UDim2.new(0, 80, 0, 40)
+espKeybind.Position = UDim2.new(0, 220, 0, 50)
+espKeybind.BackgroundTransparency = 0.6
+espKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
+espKeybind.Text = espKey
+espKeybind.PlaceholderText = "E"
+espKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
+espKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
+espKeybind.Font = Enum.Font.GothamBlack
+espKeybind.TextSize = 20
+espKeybind.TextXAlignment = Enum.TextXAlignment.Center
+espKeybind.ClearTextOnFocus = true
+espKeybind.Parent = content
+
+local espStroke = Instance.new("UIStroke")
+espStroke.Color = Color3.fromRGB(100, 90, 140)
+espStroke.Thickness = 1.5
+espStroke.Transparency = 0.5
+espStroke.Parent = espKeybind
+
+espKeybind.FocusLost:Connect(function(enterPressed)
+	local t = espKeybind.Text:upper():gsub("[^A-Z]", "")
+	if t:len() > 1 then t = t:sub(1, 1) end
+	espKeybind.Text = t
+	espKey = t
+	updateKeybinds()
+	if enterPressed then espKeybind:ReleaseFocus() end
+end)
+
+-- Сворачивание
+local isCollapsed = false
+toggleBtn.MouseButton1Click:Connect(function()
+	isCollapsed = not isCollapsed
+	if isCollapsed then
+		frame.Size = UDim2.new(0, 480, 0, 46)
+		toggleBtn.Text = "+"
+		content.Visible = false
+	else
+		frame.Size = UDim2.new(0, 480, 0, 220)
+		toggleBtn.Text = "−"
+		content.Visible = true
+	end
+end)
+
+-- Закрытие
+closeBtn.MouseButton1Click:Connect(function()
+	stopESP()
+	if inputConnection then inputConnection:Disconnect() end
+	pcall(function() gui:Destroy() end)
+end)
+
+-- Перетаскивание
+local dragging = false
+local dragStart
+local startPos
+
+titleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = frame.Position
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+		local delta = input.Position - dragStart
+		frame.Position = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y
+		)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
+	end
+end)
+
+frame.Visible = true
