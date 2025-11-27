@@ -20,7 +20,8 @@ end
 
 local espActive = false
 local jumpKey = "Q"
-local espKey = ""
+local espKey = "K"
+local resetKey = "R"
 local inputConnection = nil
 local playerHighlights = {}
 
@@ -36,16 +37,6 @@ local function createHighlight(player)
 		highlight.Adornee = player.Character
 		highlight.Parent = player.Character
 		playerHighlights[player] = highlight
-	end
-end
-
-local function updateHighlight(player)
-	if player.Character and player.Character:FindFirstChild("ESPHighlight") and player.Character:FindFirstChild("Humanoid") then
-		if player.Character.Humanoid.Health <= 0 then
-			player.Character.ESPHighlight.FillColor = Color3.fromRGB(100, 0, 0)
-		else
-			player.Character.ESPHighlight.FillColor = Color3.fromHSV(math.random(), 0.9, 1)
-		end
 	end
 end
 
@@ -93,6 +84,21 @@ local function boostJump()
 	end
 end
 
+local function resetCharacter()
+	local char = LocalPlayer.Character
+	if char then
+		local humanoid = char:FindFirstChild("Humanoid")
+		if humanoid then
+			humanoid.Health = 0
+			task.delay(0.5, function()
+				if LocalPlayer and not LocalPlayer.Character then
+					LocalPlayer:LoadCharacter()
+				end
+			end)
+		end
+	end
+end
+
 local function updateKeybinds()
 	if inputConnection then
 		inputConnection:Disconnect()
@@ -101,13 +107,14 @@ local function updateKeybinds()
 		if gpe then return end
 		if input.KeyCode.Name == jumpKey then
 			boostJump()
-		end
-		if input.KeyCode.Name == espKey then
+		elseif input.KeyCode.Name == espKey then
 			if espActive then
 				stopESP()
 			else
 				startESP()
 			end
+		elseif input.KeyCode.Name == resetKey then
+			resetCharacter()
 		end
 	end)
 end
@@ -119,8 +126,8 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 480, 0, 220)
-frame.Position = UDim2.new(0.5, -240, 0.5, -110)
+frame.Size = UDim2.new(0, 500, 0, 260)
+frame.Position = UDim2.new(0.5, -250, 0.5, -130)
 frame.BackgroundColor3 = Color3.fromRGB(15, 12, 22)
 frame.BackgroundTransparency = 0.38
 frame.BorderSizePixel = 0
@@ -190,14 +197,14 @@ closeBtn.BorderSizePixel = 0
 closeBtn.Parent = titleBar
 
 local content = Instance.new("Frame")
-content.Size = UDim2.new(1, -40, 0, 130)
+content.Size = UDim2.new(1, -40, 0, 170)
 content.Position = UDim2.new(0, 20, 0, 60)
 content.BackgroundTransparency = 1
 content.Parent = frame
 
 -- === Jump Boost ===
 local btnJump = Instance.new("TextButton")
-btnJump.Size = UDim2.new(0, 200, 0, 40)
+btnJump.Size = UDim2.new(0, 220, 0, 40)
 btnJump.Position = UDim2.new(0, 0, 0, 0)
 btnJump.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
 btnJump.BackgroundTransparency = 0.35
@@ -217,7 +224,7 @@ end)
 
 local jumpKeybind = Instance.new("TextBox")
 jumpKeybind.Size = UDim2.new(0, 80, 0, 40)
-jumpKeybind.Position = UDim2.new(0, 220, 0, 0)
+jumpKeybind.Position = UDim2.new(0, 240, 0, 0)
 jumpKeybind.BackgroundTransparency = 0.6
 jumpKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
 jumpKeybind.Text = jumpKey
@@ -247,7 +254,7 @@ end)
 
 -- === ESP Toggle ===
 local btnESP = Instance.new("TextButton")
-btnESP.Size = UDim2.new(0, 200, 0, 40)
+btnESP.Size = UDim2.new(0, 220, 0, 40)
 btnESP.Position = UDim2.new(0, 0, 0, 50)
 btnESP.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
 btnESP.BackgroundTransparency = 0.35
@@ -271,11 +278,11 @@ end)
 
 local espKeybind = Instance.new("TextBox")
 espKeybind.Size = UDim2.new(0, 80, 0, 40)
-espKeybind.Position = UDim2.new(0, 220, 0, 50)
+espKeybind.Position = UDim2.new(0, 240, 0, 50)
 espKeybind.BackgroundTransparency = 0.6
 espKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
 espKeybind.Text = espKey
-espKeybind.PlaceholderText = "E"
+espKeybind.PlaceholderText = "K"
 espKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
 espKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
 espKeybind.Font = Enum.Font.GothamBlack
@@ -299,16 +306,66 @@ espKeybind.FocusLost:Connect(function(enterPressed)
 	if enterPressed then espKeybind:ReleaseFocus() end
 end)
 
+-- === Reset Character ===
+local btnReset = Instance.new("TextButton")
+btnReset.Size = UDim2.new(0, 220, 0, 40)
+btnReset.Position = UDim2.new(0, 0, 0, 100)
+btnReset.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
+btnReset.BackgroundTransparency = 0.35
+btnReset.BorderSizePixel = 0
+btnReset.AutoButtonColor = false
+btnReset.Text = "Reset Character"
+btnReset.TextColor3 = Color3.fromRGB(240, 240, 255)
+btnReset.Font = Enum.Font.GothamBold
+btnReset.TextSize = 17
+btnReset.Parent = content
+
+btnReset.MouseEnter:Connect(function() playSound(408524543) end)
+btnReset.MouseButton1Click:Connect(function()
+	playSound(4307186075)
+	resetCharacter()
+end)
+
+local resetKeybind = Instance.new("TextBox")
+resetKeybind.Size = UDim2.new(0, 80, 0, 40)
+resetKeybind.Position = UDim2.new(0, 240, 0, 100)
+resetKeybind.BackgroundTransparency = 0.6
+resetKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
+resetKeybind.Text = resetKey
+resetKeybind.PlaceholderText = "R"
+resetKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
+resetKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
+resetKeybind.Font = Enum.Font.GothamBlack
+resetKeybind.TextSize = 20
+resetKeybind.TextXAlignment = Enum.TextXAlignment.Center
+resetKeybind.ClearTextOnFocus = true
+resetKeybind.Parent = content
+
+local resetStroke = Instance.new("UIStroke")
+resetStroke.Color = Color3.fromRGB(100, 90, 140)
+resetStroke.Thickness = 1.5
+resetStroke.Transparency = 0.5
+resetStroke.Parent = resetKeybind
+
+resetKeybind.FocusLost:Connect(function(enterPressed)
+	local t = resetKeybind.Text:upper():gsub("[^A-Z]", "")
+	if t:len() > 1 then t = t:sub(1, 1) end
+	resetKeybind.Text = t
+	resetKey = t
+	updateKeybinds()
+	if enterPressed then resetKeybind:ReleaseFocus() end
+end)
+
 -- Сворачивание
 local isCollapsed = false
 toggleBtn.MouseButton1Click:Connect(function()
 	isCollapsed = not isCollapsed
 	if isCollapsed then
-		frame.Size = UDim2.new(0, 480, 0, 46)
+		frame.Size = UDim2.new(0, 500, 0, 46)
 		toggleBtn.Text = "+"
 		content.Visible = false
 	else
-		frame.Size = UDim2.new(0, 480, 0, 220)
+		frame.Size = UDim2.new(0, 500, 0, 260)
 		toggleBtn.Text = "−"
 		content.Visible = true
 	end
@@ -350,4 +407,5 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
+updateKeybinds()
 frame.Visible = true
