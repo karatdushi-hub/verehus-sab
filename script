@@ -19,9 +19,12 @@ local function playSound(id)
 end
 
 local espActive = false
+local hideActive = false
+local originalCFrame = nil
 local jumpKey = "Q"
-local espKey = "K"
+local espKey = "F"
 local resetKey = "R"
+local hideKey = "T"
 local inputConnection = nil
 local playerHighlights = {}
 
@@ -76,7 +79,7 @@ end
 
 local function boostJump()
 	local char = LocalPlayer.Character
-	if char then
+	if char and not hideActive then
 		local root = char:FindFirstChild("HumanoidRootPart")
 		if root then
 			root.Velocity = Vector3.new(0, 74.5, 0)
@@ -99,13 +102,66 @@ local function resetCharacter()
 	end
 end
 
-local function updateKeybinds()
+local function toggleHide(btnJump, jumpKeybind)
+	hideActive = not hideActive
+	local char = LocalPlayer.Character
+	if not char then return end
+
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	if hideActive then
+		-- Сохраняем исходную позицию
+		originalCFrame = root.CFrame
+		-- Переворачиваем строго вверх ногами
+		local flippedCFrame = root.CFrame * CFrame.fromEulerAnglesXYZ(math.pi, 0, 0)
+		-- Поднимаем на 1 блок, чтобы не застрять
+		root.CFrame = flippedCFrame + Vector3.new(0, 1, 0)
+		-- Блокируем физику
+		if char:FindFirstChild("Humanoid") then
+			char.Humanoid.PlatformStand = true
+		end
+		-- Делаем кнопку неактивной
+		btnJump.BackgroundTransparency = 0.7
+		btnJump.TextTransparency = 0.5
+		-- Отключаем клик (заменяем обработчик)
+		btnJump.MouseButton1Click:Connect(function() end)
+	else
+		-- Восстанавливаем исходное положение + 1 блок вверх для мягкого приземления
+		if originalCFrame then
+			root.CFrame = originalCFrame + Vector3.new(0, 1, 0)
+		end
+		-- Включаем физику
+		if char:FindFirstChild("Humanoid") then
+			char.Humanoid.PlatformStand = false
+		end
+		-- Восстанавливаем кнопку
+		btnJump.BackgroundTransparency = 0.35
+		btnJump.TextTransparency = 0
+		-- Восстанавливаем функцию прыжка
+		local connections = {}
+		for _, child in ipairs(btnJump:GetDescendants()) do
+			if child:IsA("RBXScriptConnection") then
+				table.insert(connections, child)
+			end
+		end
+		for _, conn in ipairs(connections) do
+			conn:Disconnect()
+		end
+		btnJump.MouseButton1Click:Connect(function()
+			playSound(4307186075)
+			boostJump()
+		end)
+	end
+end
+
+local function updateKeybinds(btnJump, jumpKeybind)
 	if inputConnection then
 		inputConnection:Disconnect()
 	end
 	inputConnection = UserInputService.InputBegan:Connect(function(input, gpe)
 		if gpe then return end
-		if input.KeyCode.Name == jumpKey then
+		if input.KeyCode.Name == jumpKey and not hideActive then
 			boostJump()
 		elseif input.KeyCode.Name == espKey then
 			if espActive then
@@ -115,6 +171,8 @@ local function updateKeybinds()
 			end
 		elseif input.KeyCode.Name == resetKey then
 			resetCharacter()
+		elseif input.KeyCode.Name == hideKey then
+			toggleHide(btnJump, jumpKeybind)
 		end
 	end)
 end
@@ -126,8 +184,8 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 500, 0, 260)
-frame.Position = UDim2.new(0.5, -250, 0.5, -130)
+frame.Size = UDim2.new(0, 500, 0, 310)
+frame.Position = UDim2.new(0.5, -250, 0.5, -155)
 frame.BackgroundColor3 = Color3.fromRGB(15, 12, 22)
 frame.BackgroundTransparency = 0.38
 frame.BorderSizePixel = 0
@@ -197,7 +255,7 @@ closeBtn.BorderSizePixel = 0
 closeBtn.Parent = titleBar
 
 local content = Instance.new("Frame")
-content.Size = UDim2.new(1, -40, 0, 170)
+content.Size = UDim2.new(1, -40, 0, 220)
 content.Position = UDim2.new(0, 20, 0, 60)
 content.BackgroundTransparency = 1
 content.Parent = frame
@@ -248,7 +306,7 @@ jumpKeybind.FocusLost:Connect(function(enterPressed)
 	if t:len() > 1 then t = t:sub(1, 1) end
 	jumpKeybind.Text = t
 	jumpKey = t
-	updateKeybinds()
+	updateKeybinds(btnJump, jumpKeybind)
 	if enterPressed then jumpKeybind:ReleaseFocus() end
 end)
 
@@ -282,7 +340,7 @@ espKeybind.Position = UDim2.new(0, 240, 0, 50)
 espKeybind.BackgroundTransparency = 0.6
 espKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
 espKeybind.Text = espKey
-espKeybind.PlaceholderText = "K"
+espKeybind.PlaceholderText = "F"
 espKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
 espKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
 espKeybind.Font = Enum.Font.GothamBlack
@@ -302,7 +360,7 @@ espKeybind.FocusLost:Connect(function(enterPressed)
 	if t:len() > 1 then t = t:sub(1, 1) end
 	espKeybind.Text = t
 	espKey = t
-	updateKeybinds()
+	updateKeybinds(btnJump, jumpKeybind)
 	if enterPressed then espKeybind:ReleaseFocus() end
 end)
 
@@ -352,8 +410,58 @@ resetKeybind.FocusLost:Connect(function(enterPressed)
 	if t:len() > 1 then t = t:sub(1, 1) end
 	resetKeybind.Text = t
 	resetKey = t
-	updateKeybinds()
+	updateKeybinds(btnJump, jumpKeybind)
 	if enterPressed then resetKeybind:ReleaseFocus() end
+end)
+
+-- === Hide ===
+local btnHide = Instance.new("TextButton")
+btnHide.Size = UDim2.new(0, 220, 0, 40)
+btnHide.Position = UDim2.new(0, 0, 0, 150)
+btnHide.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
+btnHide.BackgroundTransparency = 0.35
+btnHide.BorderSizePixel = 0
+btnHide.AutoButtonColor = false
+btnHide.Text = "Hide"
+btnHide.TextColor3 = Color3.fromRGB(240, 240, 255)
+btnHide.Font = Enum.Font.GothamBold
+btnHide.TextSize = 17
+btnHide.Parent = content
+
+btnHide.MouseEnter:Connect(function() playSound(408524543) end)
+btnHide.MouseButton1Click:Connect(function()
+	playSound(4307186075)
+	toggleHide(btnJump, jumpKeybind)
+end)
+
+local hideKeybind = Instance.new("TextBox")
+hideKeybind.Size = UDim2.new(0, 80, 0, 40)
+hideKeybind.Position = UDim2.new(0, 240, 0, 150)
+hideKeybind.BackgroundTransparency = 0.6
+hideKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
+hideKeybind.Text = hideKey
+hideKeybind.PlaceholderText = "T"
+hideKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
+hideKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
+hideKeybind.Font = Enum.Font.GothamBlack
+hideKeybind.TextSize = 20
+hideKeybind.TextXAlignment = Enum.TextXAlignment.Center
+hideKeybind.ClearTextOnFocus = true
+hideKeybind.Parent = content
+
+local hideStroke = Instance.new("UIStroke")
+hideStroke.Color = Color3.fromRGB(100, 90, 140)
+hideStroke.Thickness = 1.5
+hideStroke.Transparency = 0.5
+hideStroke.Parent = hideKeybind
+
+hideKeybind.FocusLost:Connect(function(enterPressed)
+	local t = hideKeybind.Text:upper():gsub("[^A-Z]", "")
+	if t:len() > 1 then t = t:sub(1, 1) end
+	hideKeybind.Text = t
+	hideKey = t
+	updateKeybinds(btnJump, jumpKeybind)
+	if enterPressed then hideKeybind:ReleaseFocus() end
 end)
 
 -- Сворачивание
@@ -365,7 +473,7 @@ toggleBtn.MouseButton1Click:Connect(function()
 		toggleBtn.Text = "+"
 		content.Visible = false
 	else
-		frame.Size = UDim2.new(0, 500, 0, 260)
+		frame.Size = UDim2.new(0, 500, 0, 310)
 		toggleBtn.Text = "−"
 		content.Visible = true
 	end
@@ -375,6 +483,12 @@ end)
 closeBtn.MouseButton1Click:Connect(function()
 	stopESP()
 	if inputConnection then inputConnection:Disconnect() end
+	if hideActive then
+		local char = LocalPlayer.Character
+		if char and char:FindFirstChild("Humanoid") then
+			char.Humanoid.PlatformStand = false
+		end
+	end
 	pcall(function() gui:Destroy() end)
 end)
 
@@ -407,5 +521,5 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
-updateKeybinds()
+updateKeybinds(btnJump, jumpKeybind)
 frame.Visible = true
