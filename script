@@ -5,9 +5,21 @@ local SoundService = game:GetService("SoundService")
 local LocalPlayer = Players.LocalPlayer
 
 local oldGui = LocalPlayer.PlayerGui:FindFirstChild("RombHub_SaB")
-if oldGui then
-	oldGui:Destroy()
-end
+if oldGui then oldGui:Destroy() end
+
+spawn(function()
+	repeat
+		local shop = workspace:FindFirstChild("Shop")
+		local npc = shop and shop:FindFirstChild("ShopNPCCash")
+		local cube = npc and npc:FindFirstChild("Cube")
+		if cube then
+			cube.CanCollide = false
+			cube.Anchored = false
+			break
+		end
+		task.wait(1)
+	until false
+end)
 
 local function playSound(id)
 	local sound = Instance.new("Sound")
@@ -18,161 +30,196 @@ local function playSound(id)
 	task.delay(2, function() sound:Destroy() end)
 end
 
+local function formatTime(seconds)
+	local hours = math.floor(seconds / 3600)
+	local minutes = math.floor((seconds % 3600) / 60)
+	local secs = math.floor(seconds % 60)
+	return string.format("%02dh %02dm %02ds", hours, minutes, secs)
+end
+
+local function setButtonActive(btn, active)
+	local stroke = btn:FindFirstChildWhichIsA("UIStroke")
+	if stroke then
+		stroke.Enabled = active
+	end
+end
+
 local espActive = false
 local hideActive = false
 local originalCFrame = nil
-local jumpKey = "Q"
-local espKey = "F"
-local resetKey = "R"
-local hideKey = "T"
+local jumpKey = ""
+local espKey = ""
+local hideKey = ""
+local resetKey = ""
+local shopKey = ""
 local inputConnection = nil
 local playerHighlights = {}
+local playerBillboardGuis = {}
 
 local function createHighlight(player)
-	if player.Character and not player.Character:FindFirstChild("ESPHighlight") then
-		local highlight = Instance.new("Highlight")
-		highlight.Name = "ESPHighlight"
-		highlight.FillColor = Color3.fromHSV(math.random(), 0.9, 1)
-		highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-		highlight.FillTransparency = 0.65
-		highlight.OutlineTransparency = 0.1
-		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		highlight.Adornee = player.Character
-		highlight.Parent = player.Character
-		playerHighlights[player] = highlight
-	end
+	if not player.Character or player.Character:FindFirstChild("ESPHighlight") then return end
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "ESPHighlight"
+	highlight.FillColor = Color3.fromHSV(math.random(), 0.9, 1)
+	highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+	highlight.FillTransparency = 0.65
+	highlight.OutlineTransparency = 0.1
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Adornee = player.Character
+	highlight.Parent = player.Character
+	playerHighlights[player] = highlight
+
+	local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+	if not rootPart then return end
+
+	local billboardGui = Instance.new("BillboardGui")
+	billboardGui.Name = "ESPBillboard"
+	billboardGui.AlwaysOnTop = true
+	billboardGui.Size = UDim2.new(0, 100, 0, 100)
+	billboardGui.ResetOnSpawn = false
+	billboardGui.LightInfluence = 0
+	billboardGui.Adornee = rootPart
+	billboardGui.StudsOffset = Vector3.new(0, 7, 0)
+	billboardGui.Parent = player.Character
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Size = UDim2.new(1, 0, 0, 20)
+	nameLabel.Position = UDim2.new(0, 0, 0, -25)
+	nameLabel.Text = player.Name
+	nameLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
+	nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	nameLabel.TextStrokeTransparency = 0.5
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.TextSize = 16
+	nameLabel.Parent = billboardGui
+
+	playerBillboardGuis[player] = billboardGui
 end
 
 local function setupESP(player)
-	if player ~= LocalPlayer then
-		player.CharacterAdded:Connect(function()
-			task.wait(0.2)
-			if espActive then
-				createHighlight(player)
-			end
-		end)
-		if player.Character and espActive then
-			createHighlight(player)
+	if player == LocalPlayer then return end
+	player.CharacterAdded:Connect(function()
+		task.wait(0.2)
+		if espActive then createHighlight(player) end
+	end)
+	player.CharacterRemoving:Connect(function()
+		if playerHighlights[player] then
+			playerHighlights[player]:Destroy()
+			playerHighlights[player] = nil
 		end
-	end
+		if playerBillboardGuis[player] then
+			playerBillboardGuis[player]:Destroy()
+			playerBillboardGuis[player] = nil
+		end
+	end)
+	if player.Character and espActive then createHighlight(player) end
 end
 
-local function startESP()
+local function startESP(btnESP)
 	if espActive then return end
 	espActive = true
-	for _, plr in ipairs(Players:GetPlayers()) do
-		setupESP(plr)
-	end
+	for _, plr in ipairs(Players:GetPlayers()) do setupESP(plr) end
 	Players.PlayerAdded:Connect(setupESP)
+	setButtonActive(btnESP, true)
 end
 
-local function stopESP()
+local function stopESP(btnESP)
 	if not espActive then return end
 	espActive = false
 	for player, highlight in pairs(playerHighlights) do
-		if highlight and highlight.Parent then
-			highlight:Destroy()
-		end
+		if highlight and highlight.Parent then highlight:Destroy() end
 	end
 	playerHighlights = {}
+	for player, billboard in pairs(playerBillboardGuis) do
+		if billboard and billboard.Parent then billboard:Destroy() end
+	end
+	playerBillboardGuis = {}
+	setButtonActive(btnESP, false)
 end
 
-local function boostJump()
+local function boostJump(btnJump)
 	local char = LocalPlayer.Character
 	if char and not hideActive then
 		local root = char:FindFirstChild("HumanoidRootPart")
-		if root then
-			root.Velocity = Vector3.new(0, 74.5, 0)
-		end
+		if root then root.Velocity = Vector3.new(0, 74.5, 0) end
 	end
 end
 
-local function resetCharacter()
+local function resetCharacter(btnReset)
 	local char = LocalPlayer.Character
 	if char then
 		local humanoid = char:FindFirstChild("Humanoid")
-		if humanoid then
-			humanoid.Health = 0
-			task.delay(0.5, function()
-				if LocalPlayer and not LocalPlayer.Character then
-					LocalPlayer:LoadCharacter()
-				end
-			end)
-		end
+		if humanoid then humanoid.Health = 0 end
 	end
+	setButtonActive(btnReset, false)
 end
 
-local function toggleHide(btnJump, jumpKeybind)
+local function toggleHide(btnHide)
 	hideActive = not hideActive
 	local char = LocalPlayer.Character
 	if not char then return end
-
 	local root = char:FindFirstChild("HumanoidRootPart")
 	if not root then return end
 
 	if hideActive then
-		-- Сохраняем исходную позицию
 		originalCFrame = root.CFrame
-		-- Переворачиваем строго вверх ногами
-		local flippedCFrame = root.CFrame * CFrame.fromEulerAnglesXYZ(math.pi, 0, 0)
-		-- Поднимаем на 1 блок, чтобы не застрять
-		root.CFrame = flippedCFrame + Vector3.new(0, 1, 0)
-		-- Блокируем физику
-		if char:FindFirstChild("Humanoid") then
-			char.Humanoid.PlatformStand = true
-		end
-		-- Делаем кнопку неактивной
-		btnJump.BackgroundTransparency = 0.7
-		btnJump.TextTransparency = 0.5
-		-- Отключаем клик (заменяем обработчик)
-		btnJump.MouseButton1Click:Connect(function() end)
+		-- Ложим на спину: поворот по X на -90° + спуск на 2 studs
+		local rotated = root.CFrame * CFrame.fromEulerAnglesXYZ(math.rad(-90), 0, 0)
+		root.CFrame = rotated + Vector3.new(0, -2, 0)
+		char.Humanoid.PlatformStand = true
+		setButtonActive(btnHide, true)
 	else
-		-- Восстанавливаем исходное положение + 1 блок вверх для мягкого приземления
 		if originalCFrame then
-			root.CFrame = originalCFrame + Vector3.new(0, 1, 0)
+			-- Возвращаем в исходный поворот + подъём на 2.5 studs
+			root.CFrame = originalCFrame + Vector3.new(0, 2.5, 0)
 		end
-		-- Включаем физику
-		if char:FindFirstChild("Humanoid") then
-			char.Humanoid.PlatformStand = false
-		end
-		-- Восстанавливаем кнопку
-		btnJump.BackgroundTransparency = 0.35
-		btnJump.TextTransparency = 0
-		-- Восстанавливаем функцию прыжка
-		local connections = {}
-		for _, child in ipairs(btnJump:GetDescendants()) do
-			if child:IsA("RBXScriptConnection") then
-				table.insert(connections, child)
-			end
-		end
-		for _, conn in ipairs(connections) do
-			conn:Disconnect()
-		end
-		btnJump.MouseButton1Click:Connect(function()
-			playSound(4307186075)
-			boostJump()
-		end)
+		char.Humanoid.PlatformStand = false
+		setButtonActive(btnHide, false)
 	end
 end
 
-local function updateKeybinds(btnJump, jumpKeybind)
+local function tpShopHere(btnTpShop)
+	local shopNpc = workspace:FindFirstChild("Shop") and workspace.Shop:FindFirstChild("ShopNPCCash")
+	if not shopNpc then return end
+	local char = LocalPlayer.Character
+	if not char then return end
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	local lookVector = root.CFrame.LookVector
+	local targetPos = root.Position + lookVector * 3 + Vector3.new(0, 2, 0)
+	shopNpc:PivotTo(CFrame.new(targetPos))
+	setButtonActive(btnTpShop, false)
+end
+
+local btnJump, btnHide, btnESP, btnReset, btnTpShop
+
+local function updateKeybinds()
 	if inputConnection then
 		inputConnection:Disconnect()
 	end
 	inputConnection = UserInputService.InputBegan:Connect(function(input, gpe)
 		if gpe then return end
-		if input.KeyCode.Name == jumpKey and not hideActive then
-			boostJump()
-		elseif input.KeyCode.Name == espKey then
+		local keyName = input.KeyCode.Name
+		if jumpKey ~= "" and keyName == jumpKey and not hideActive then
+			playSound(4307186075)
+			boostJump(btnJump)
+		elseif espKey ~= "" and keyName == espKey then
+			playSound(4307186075)
 			if espActive then
-				stopESP()
+				stopESP(btnESP)
 			else
-				startESP()
+				startESP(btnESP)
 			end
-		elseif input.KeyCode.Name == resetKey then
-			resetCharacter()
-		elseif input.KeyCode.Name == hideKey then
-			toggleHide(btnJump, jumpKeybind)
+		elseif resetKey ~= "" and keyName == resetKey then
+			playSound(4307186075)
+			resetCharacter(btnReset)
+		elseif hideKey ~= "" and keyName == hideKey then
+			playSound(4307186075)
+			toggleHide(btnHide)
+		elseif shopKey ~= "" and keyName == shopKey then
+			playSound(4307186075)
+			tpShopHere(btnTpShop)
 		end
 	end)
 end
@@ -184,8 +231,8 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 500, 0, 310)
-frame.Position = UDim2.new(0.5, -250, 0.5, -155)
+frame.Size = UDim2.new(0, 500, 0, 340)
+frame.Position = UDim2.new(0.5, -250, 0.5, -170)
 frame.BackgroundColor3 = Color3.fromRGB(15, 12, 22)
 frame.BackgroundTransparency = 0.38
 frame.BorderSizePixel = 0
@@ -209,293 +256,16 @@ spawn(function()
 	end
 end)
 
+local dragging = false
+local dragStart
+local startPos
+
 local titleBar = Instance.new("Frame")
 titleBar.Size = UDim2.new(1, 0, 0, 46)
 titleBar.BackgroundColor3 = Color3.fromRGB(25, 20, 35)
 titleBar.BackgroundTransparency = 0.22
 titleBar.BorderSizePixel = 0
 titleBar.Parent = frame
-
-local titleCorner = Instance.new("UICorner")
-titleCorner.CornerRadius = UDim.new(0, 20)
-titleCorner.Parent = titleBar
-
-local titleText = Instance.new("TextLabel")
-titleText.Size = UDim2.new(1, -100, 1, 0)
-titleText.Position = UDim2.new(0, 20, 0, 0)
-titleText.BackgroundTransparency = 1
-titleText.Text = "Romb Hub - SaB"
-titleText.TextColor3 = Color3.fromRGB(250, 250, 255)
-titleText.Font = Enum.Font.GothamBlack
-titleText.TextSize = 20
-titleText.Parent = titleBar
-
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0, 34, 0, 34)
-toggleBtn.Position = UDim2.new(1, -100, 0.5, -17)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 50, 90)
-toggleBtn.Text = "−"
-toggleBtn.TextColor3 = Color3.fromRGB(220, 220, 250)
-toggleBtn.Font = Enum.Font.GothamBold
-toggleBtn.TextSize = 22
-toggleBtn.AutoButtonColor = false
-toggleBtn.BorderSizePixel = 0
-toggleBtn.Parent = titleBar
-
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 34, 0, 34)
-closeBtn.Position = UDim2.new(1, -140, 0.5, -17)
-closeBtn.BackgroundColor3 = Color3.fromRGB(210, 60, 85)
-closeBtn.Text = "✖"
-closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 22
-closeBtn.AutoButtonColor = false
-closeBtn.BorderSizePixel = 0
-closeBtn.Parent = titleBar
-
-local content = Instance.new("Frame")
-content.Size = UDim2.new(1, -40, 0, 220)
-content.Position = UDim2.new(0, 20, 0, 60)
-content.BackgroundTransparency = 1
-content.Parent = frame
-
--- === Jump Boost ===
-local btnJump = Instance.new("TextButton")
-btnJump.Size = UDim2.new(0, 220, 0, 40)
-btnJump.Position = UDim2.new(0, 0, 0, 0)
-btnJump.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
-btnJump.BackgroundTransparency = 0.35
-btnJump.BorderSizePixel = 0
-btnJump.AutoButtonColor = false
-btnJump.Text = "Jump Boost"
-btnJump.TextColor3 = Color3.fromRGB(240, 240, 255)
-btnJump.Font = Enum.Font.GothamBold
-btnJump.TextSize = 17
-btnJump.Parent = content
-
-btnJump.MouseEnter:Connect(function() playSound(408524543) end)
-btnJump.MouseButton1Click:Connect(function()
-	playSound(4307186075)
-	boostJump()
-end)
-
-local jumpKeybind = Instance.new("TextBox")
-jumpKeybind.Size = UDim2.new(0, 80, 0, 40)
-jumpKeybind.Position = UDim2.new(0, 240, 0, 0)
-jumpKeybind.BackgroundTransparency = 0.6
-jumpKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
-jumpKeybind.Text = jumpKey
-jumpKeybind.PlaceholderText = "Q"
-jumpKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
-jumpKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
-jumpKeybind.Font = Enum.Font.GothamBlack
-jumpKeybind.TextSize = 20
-jumpKeybind.TextXAlignment = Enum.TextXAlignment.Center
-jumpKeybind.ClearTextOnFocus = true
-jumpKeybind.Parent = content
-
-local jumpStroke = Instance.new("UIStroke")
-jumpStroke.Color = Color3.fromRGB(100, 90, 140)
-jumpStroke.Thickness = 1.5
-jumpStroke.Transparency = 0.5
-jumpStroke.Parent = jumpKeybind
-
-jumpKeybind.FocusLost:Connect(function(enterPressed)
-	local t = jumpKeybind.Text:upper():gsub("[^A-Z]", "")
-	if t:len() > 1 then t = t:sub(1, 1) end
-	jumpKeybind.Text = t
-	jumpKey = t
-	updateKeybinds(btnJump, jumpKeybind)
-	if enterPressed then jumpKeybind:ReleaseFocus() end
-end)
-
--- === ESP Toggle ===
-local btnESP = Instance.new("TextButton")
-btnESP.Size = UDim2.new(0, 220, 0, 40)
-btnESP.Position = UDim2.new(0, 0, 0, 50)
-btnESP.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
-btnESP.BackgroundTransparency = 0.35
-btnESP.BorderSizePixel = 0
-btnESP.AutoButtonColor = false
-btnESP.Text = "ESP Toggle"
-btnESP.TextColor3 = Color3.fromRGB(240, 240, 255)
-btnESP.Font = Enum.Font.GothamBold
-btnESP.TextSize = 17
-btnESP.Parent = content
-
-btnESP.MouseEnter:Connect(function() playSound(408524543) end)
-btnESP.MouseButton1Click:Connect(function()
-	playSound(4307186075)
-	if espActive then
-		stopESP()
-	else
-		startESP()
-	end
-end)
-
-local espKeybind = Instance.new("TextBox")
-espKeybind.Size = UDim2.new(0, 80, 0, 40)
-espKeybind.Position = UDim2.new(0, 240, 0, 50)
-espKeybind.BackgroundTransparency = 0.6
-espKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
-espKeybind.Text = espKey
-espKeybind.PlaceholderText = "F"
-espKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
-espKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
-espKeybind.Font = Enum.Font.GothamBlack
-espKeybind.TextSize = 20
-espKeybind.TextXAlignment = Enum.TextXAlignment.Center
-espKeybind.ClearTextOnFocus = true
-espKeybind.Parent = content
-
-local espStroke = Instance.new("UIStroke")
-espStroke.Color = Color3.fromRGB(100, 90, 140)
-espStroke.Thickness = 1.5
-espStroke.Transparency = 0.5
-espStroke.Parent = espKeybind
-
-espKeybind.FocusLost:Connect(function(enterPressed)
-	local t = espKeybind.Text:upper():gsub("[^A-Z]", "")
-	if t:len() > 1 then t = t:sub(1, 1) end
-	espKeybind.Text = t
-	espKey = t
-	updateKeybinds(btnJump, jumpKeybind)
-	if enterPressed then espKeybind:ReleaseFocus() end
-end)
-
--- === Reset Character ===
-local btnReset = Instance.new("TextButton")
-btnReset.Size = UDim2.new(0, 220, 0, 40)
-btnReset.Position = UDim2.new(0, 0, 0, 100)
-btnReset.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
-btnReset.BackgroundTransparency = 0.35
-btnReset.BorderSizePixel = 0
-btnReset.AutoButtonColor = false
-btnReset.Text = "Reset Character"
-btnReset.TextColor3 = Color3.fromRGB(240, 240, 255)
-btnReset.Font = Enum.Font.GothamBold
-btnReset.TextSize = 17
-btnReset.Parent = content
-
-btnReset.MouseEnter:Connect(function() playSound(408524543) end)
-btnReset.MouseButton1Click:Connect(function()
-	playSound(4307186075)
-	resetCharacter()
-end)
-
-local resetKeybind = Instance.new("TextBox")
-resetKeybind.Size = UDim2.new(0, 80, 0, 40)
-resetKeybind.Position = UDim2.new(0, 240, 0, 100)
-resetKeybind.BackgroundTransparency = 0.6
-resetKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
-resetKeybind.Text = resetKey
-resetKeybind.PlaceholderText = "R"
-resetKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
-resetKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
-resetKeybind.Font = Enum.Font.GothamBlack
-resetKeybind.TextSize = 20
-resetKeybind.TextXAlignment = Enum.TextXAlignment.Center
-resetKeybind.ClearTextOnFocus = true
-resetKeybind.Parent = content
-
-local resetStroke = Instance.new("UIStroke")
-resetStroke.Color = Color3.fromRGB(100, 90, 140)
-resetStroke.Thickness = 1.5
-resetStroke.Transparency = 0.5
-resetStroke.Parent = resetKeybind
-
-resetKeybind.FocusLost:Connect(function(enterPressed)
-	local t = resetKeybind.Text:upper():gsub("[^A-Z]", "")
-	if t:len() > 1 then t = t:sub(1, 1) end
-	resetKeybind.Text = t
-	resetKey = t
-	updateKeybinds(btnJump, jumpKeybind)
-	if enterPressed then resetKeybind:ReleaseFocus() end
-end)
-
--- === Hide ===
-local btnHide = Instance.new("TextButton")
-btnHide.Size = UDim2.new(0, 220, 0, 40)
-btnHide.Position = UDim2.new(0, 0, 0, 150)
-btnHide.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
-btnHide.BackgroundTransparency = 0.35
-btnHide.BorderSizePixel = 0
-btnHide.AutoButtonColor = false
-btnHide.Text = "Hide"
-btnHide.TextColor3 = Color3.fromRGB(240, 240, 255)
-btnHide.Font = Enum.Font.GothamBold
-btnHide.TextSize = 17
-btnHide.Parent = content
-
-btnHide.MouseEnter:Connect(function() playSound(408524543) end)
-btnHide.MouseButton1Click:Connect(function()
-	playSound(4307186075)
-	toggleHide(btnJump, jumpKeybind)
-end)
-
-local hideKeybind = Instance.new("TextBox")
-hideKeybind.Size = UDim2.new(0, 80, 0, 40)
-hideKeybind.Position = UDim2.new(0, 240, 0, 150)
-hideKeybind.BackgroundTransparency = 0.6
-hideKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
-hideKeybind.Text = hideKey
-hideKeybind.PlaceholderText = "T"
-hideKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
-hideKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
-hideKeybind.Font = Enum.Font.GothamBlack
-hideKeybind.TextSize = 20
-hideKeybind.TextXAlignment = Enum.TextXAlignment.Center
-hideKeybind.ClearTextOnFocus = true
-hideKeybind.Parent = content
-
-local hideStroke = Instance.new("UIStroke")
-hideStroke.Color = Color3.fromRGB(100, 90, 140)
-hideStroke.Thickness = 1.5
-hideStroke.Transparency = 0.5
-hideStroke.Parent = hideKeybind
-
-hideKeybind.FocusLost:Connect(function(enterPressed)
-	local t = hideKeybind.Text:upper():gsub("[^A-Z]", "")
-	if t:len() > 1 then t = t:sub(1, 1) end
-	hideKeybind.Text = t
-	hideKey = t
-	updateKeybinds(btnJump, jumpKeybind)
-	if enterPressed then hideKeybind:ReleaseFocus() end
-end)
-
--- Сворачивание
-local isCollapsed = false
-toggleBtn.MouseButton1Click:Connect(function()
-	isCollapsed = not isCollapsed
-	if isCollapsed then
-		frame.Size = UDim2.new(0, 500, 0, 46)
-		toggleBtn.Text = "+"
-		content.Visible = false
-	else
-		frame.Size = UDim2.new(0, 500, 0, 310)
-		toggleBtn.Text = "−"
-		content.Visible = true
-	end
-end)
-
--- Закрытие
-closeBtn.MouseButton1Click:Connect(function()
-	stopESP()
-	if inputConnection then inputConnection:Disconnect() end
-	if hideActive then
-		local char = LocalPlayer.Character
-		if char and char:FindFirstChild("Humanoid") then
-			char.Humanoid.PlatformStand = false
-		end
-	end
-	pcall(function() gui:Destroy() end)
-end)
-
--- Перетаскивание
-local dragging = false
-local dragStart
-local startPos
 
 titleBar.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -521,5 +291,586 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
-updateKeybinds(btnJump, jumpKeybind)
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 20)
+titleCorner.Parent = titleBar
+
+local titleText = Instance.new("TextLabel")
+titleText.Size = UDim2.new(1, -100, 1, 0)
+titleText.Position = UDim2.new(0, 20, 0, 0)
+titleText.BackgroundTransparency = 1
+titleText.Text = "Romb Hub - SaB"
+titleText.TextColor3 = Color3.fromRGB(250, 250, 255)
+titleText.Font = Enum.Font.GothamBlack
+titleText.TextSize = 20
+titleText.Parent = titleBar
+
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0, 32, 0, 32)
+toggleBtn.Position = UDim2.new(1, -100, 0.5, -16)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 50, 90)
+toggleBtn.Text = "−"
+toggleBtn.TextColor3 = Color3.fromRGB(220, 220, 250)
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 20
+toggleBtn.AutoButtonColor = false
+toggleBtn.BorderSizePixel = 0
+toggleBtn.Parent = titleBar
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 32, 0, 32)
+closeBtn.Position = UDim2.new(1, -140, 0.5, -16)
+closeBtn.BackgroundColor3 = Color3.fromRGB(210, 60, 85)
+closeBtn.Text = "✖"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 20
+closeBtn.AutoButtonColor = false
+closeBtn.BorderSizePixel = 0
+closeBtn.Parent = titleBar
+
+local tabs = {"Home", "Steal", "Visuals", "Extra"}
+local tabFrame = Instance.new("Frame")
+tabFrame.Size = UDim2.new(0, 260, 0, 36)
+tabFrame.Position = UDim2.new(0, 10, 0, 50)
+tabFrame.BackgroundTransparency = 1
+tabFrame.Parent = frame
+
+local tabButtons = {}
+for i, tabName in ipairs(tabs) do
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, 60, 0, 30)
+	btn.Position = UDim2.new(0, (i - 1) * 65, 0, 0)
+	btn.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
+	btn.BackgroundTransparency = 0.6
+	btn.BorderSizePixel = 0
+	btn.Text = tabName
+	btn.Font = Enum.Font.GothamSemibold
+	btn.TextSize = 14
+	btn.TextColor3 = Color3.fromRGB(180, 180, 210)
+	btn.Parent = tabFrame
+
+	local btnStroke = Instance.new("UIStroke")
+	btnStroke.Color = Color3.fromRGB(100, 90, 140)
+	btnStroke.Thickness = 1.2
+	btnStroke.Transparency = 0.6
+	btnStroke.Parent = btn
+
+	local btnCorner = Instance.new("UICorner")
+	btnCorner.CornerRadius = UDim.new(0, 6)
+	btnCorner.Parent = btn
+
+	table.insert(tabButtons, btn)
+end
+
+tabButtons[1].BackgroundColor3 = Color3.fromRGB(70, 60, 100)
+tabButtons[1].TextColor3 = Color3.fromRGB(240, 240, 255)
+
+local contentArea = Instance.new("Frame")
+contentArea.Size = UDim2.new(0, 280, 0, 180)
+contentArea.Position = UDim2.new(0, 10, 0, 92)
+contentArea.BackgroundTransparency = 1
+contentArea.Parent = frame
+
+local homePanel = Instance.new("Frame")
+homePanel.Name = "Home"
+homePanel.Size = UDim2.new(1, 0, 1, 0)
+homePanel.BackgroundTransparency = 1
+homePanel.Visible = true
+homePanel.Parent = contentArea
+
+local homeImage = Instance.new("ImageLabel")
+homeImage.Size = UDim2.new(0.6, 0, 0, 100)
+homeImage.Position = UDim2.new(0.2, 0, 0, 10)
+homeImage.BackgroundTransparency = 1
+homeImage.Image = "rbxassetid://77648502325417"
+homeImage.Parent = homePanel
+
+local imageCorner = Instance.new("UICorner")
+imageCorner.CornerRadius = UDim.new(0, 8)
+imageCorner.Parent = homeImage
+
+local imageStroke = Instance.new("UIStroke")
+imageStroke.Color = Color3.fromRGB(0, 0, 0)
+imageStroke.Thickness = 1
+imageStroke.Parent = homeImage
+
+local homeDesc = Instance.new("TextLabel")
+homeDesc.Size = UDim2.new(1, -20, 0, 60)
+homeDesc.Position = UDim2.new(0, 10, 0, 120)
+homeDesc.BackgroundTransparency = 1
+homeDesc.Text = "Romb Hub - SaB v1.1\n\n• ESP with Highlight & Name Tag\n• Jump Boost, Hide, Reset Character\n• Tp Shop Here to your position\n• Fully customizable keybinds\n• Set Default Keybinds button\n• Smooth UI with drag support"
+homeDesc.TextColor3 = Color3.fromRGB(240, 240, 240)
+homeDesc.TextWrapped = true
+homeDesc.Font = Enum.Font.Gotham
+homeDesc.TextSize = 14
+homeDesc.Parent = homePanel
+
+local versionLabel = Instance.new("TextLabel")
+versionLabel.Size = UDim2.new(1, -20, 0, 20)
+versionLabel.Position = UDim2.new(0, 10, 0, 185)
+versionLabel.BackgroundTransparency = 1
+versionLabel.Text = "v1.1"
+versionLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
+versionLabel.Font = Enum.Font.GothamBold
+versionLabel.TextSize = 16
+versionLabel.Parent = homePanel
+
+local imageIds = {77648502325417, 112783473382287, 108117949112299}
+local currentIndex = 1
+task.spawn(function()
+	while homeImage and homeImage.Parent do
+		homeImage.Image = "rbxassetid://" .. tostring(imageIds[currentIndex])
+		currentIndex = currentIndex % #imageIds + 1
+		task.wait(5)
+	end
+end)
+
+local stealPanel = Instance.new("Frame")
+stealPanel.Name = "Steal"
+stealPanel.Size = UDim2.new(1, 0, 1, 0)
+stealPanel.BackgroundTransparency = 1
+stealPanel.Visible = false
+stealPanel.Parent = contentArea
+
+btnJump = Instance.new("TextButton")
+btnJump.Size = UDim2.new(1, -90, 0, 40)
+btnJump.Position = UDim2.new(0, 0, 0, 0)
+btnJump.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
+btnJump.BackgroundTransparency = 0.35
+btnJump.BorderSizePixel = 0
+btnJump.AutoButtonColor = false
+btnJump.Text = "Jump Boost"
+btnJump.TextColor3 = Color3.fromRGB(240, 240, 255)
+btnJump.Font = Enum.Font.GothamBold
+btnJump.TextSize = 17
+btnJump.Parent = stealPanel
+
+btnJump.MouseEnter:Connect(function() playSound(408524543) end)
+btnJump.MouseButton1Click:Connect(function()
+	if jumpKey ~= "" then
+		playSound(4307186075)
+		boostJump(btnJump)
+	end
+end)
+
+local jumpKeybind = Instance.new("TextBox")
+jumpKeybind.Size = UDim2.new(0, 80, 0, 40)
+jumpKeybind.Position = UDim2.new(1, -85, 0, 0)
+jumpKeybind.BackgroundTransparency = 0.6
+jumpKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
+jumpKeybind.Text = ""
+jumpKeybind.PlaceholderText = "Q"
+jumpKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
+jumpKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
+jumpKeybind.Font = Enum.Font.GothamBlack
+jumpKeybind.TextSize = 20
+jumpKeybind.TextXAlignment = Enum.TextXAlignment.Center
+jumpKeybind.ClearTextOnFocus = true
+jumpKeybind.Parent = stealPanel
+
+jumpKeybind.FocusLost:Connect(function(enterPressed)
+	local t = jumpKeybind.Text:upper():gsub("[^A-Z]", "")
+	if t:len() > 1 then t = t:sub(1, 1) end
+	jumpKeybind.Text = t
+	jumpKey = t
+	updateKeybinds()
+	if enterPressed then jumpKeybind:ReleaseFocus() end
+end)
+
+btnHide = Instance.new("TextButton")
+btnHide.Size = UDim2.new(1, -90, 0, 40)
+btnHide.Position = UDim2.new(0, 0, 0, 50)
+btnHide.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
+btnHide.BackgroundTransparency = 0.35
+btnHide.BorderSizePixel = 0
+btnHide.AutoButtonColor = false
+btnHide.Text = "Hide"
+btnHide.TextColor3 = Color3.fromRGB(240, 240, 255)
+btnHide.Font = Enum.Font.GothamBold
+btnHide.TextSize = 17
+btnHide.Parent = stealPanel
+
+local hideStroke = Instance.new("UIStroke")
+hideStroke.Thickness = 2
+hideStroke.Transparency = 0.3
+hideStroke.Enabled = false
+hideStroke.Parent = btnHide
+
+task.spawn(function()
+	while hideStroke and hideStroke.Parent do
+		if hideStroke.Enabled then
+			local t = tick()
+			hideStroke.Color = Color3.fromHSV((t * 0.3) % 1, 0.9, 1)
+		end
+		task.wait(0.05)
+	end
+end)
+
+btnHide.MouseEnter:Connect(function() playSound(408524543) end)
+btnHide.MouseButton1Click:Connect(function()
+	if hideKey ~= "" then
+		playSound(4307186075)
+		toggleHide(btnHide)
+	end
+end)
+
+local hideKeybind = Instance.new("TextBox")
+hideKeybind.Size = UDim2.new(0, 80, 0, 40)
+hideKeybind.Position = UDim2.new(1, -85, 0, 50)
+hideKeybind.BackgroundTransparency = 0.6
+hideKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
+hideKeybind.Text = ""
+hideKeybind.PlaceholderText = "R"
+hideKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
+hideKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
+hideKeybind.Font = Enum.Font.GothamBlack
+hideKeybind.TextSize = 20
+hideKeybind.TextXAlignment = Enum.TextXAlignment.Center
+hideKeybind.ClearTextOnFocus = true
+hideKeybind.Parent = stealPanel
+
+hideKeybind.FocusLost:Connect(function(enterPressed)
+	local t = hideKeybind.Text:upper():gsub("[^A-Z]", "")
+	if t:len() > 1 then t = t:sub(1, 1) end
+	hideKeybind.Text = t
+	hideKey = t
+	updateKeybinds()
+	if enterPressed then hideKeybind:ReleaseFocus() end
+end)
+
+local visualsPanel = Instance.new("Frame")
+visualsPanel.Name = "Visuals"
+visualsPanel.Size = UDim2.new(1, 0, 1, 0)
+visualsPanel.BackgroundTransparency = 1
+visualsPanel.Visible = false
+visualsPanel.Parent = contentArea
+
+btnESP = Instance.new("TextButton")
+btnESP.Size = UDim2.new(1, -90, 0, 40)
+btnESP.Position = UDim2.new(0, 0, 0, 0)
+btnESP.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
+btnESP.BackgroundTransparency = 0.35
+btnESP.BorderSizePixel = 0
+btnESP.AutoButtonColor = false
+btnESP.Text = "ESP Toggle"
+btnESP.TextColor3 = Color3.fromRGB(240, 240, 255)
+btnESP.Font = Enum.Font.GothamBold
+btnESP.TextSize = 17
+btnESP.Parent = visualsPanel
+
+local espStroke = Instance.new("UIStroke")
+espStroke.Thickness = 2
+espStroke.Transparency = 0.3
+espStroke.Enabled = false
+espStroke.Parent = btnESP
+
+task.spawn(function()
+	while espStroke and espStroke.Parent do
+		if espStroke.Enabled then
+			local t = tick()
+			espStroke.Color = Color3.fromHSV((t * 0.3) % 1, 0.9, 1)
+		end
+		task.wait(0.05)
+	end
+end)
+
+btnESP.MouseEnter:Connect(function() playSound(408524543) end)
+btnESP.MouseButton1Click:Connect(function()
+	if espKey ~= "" then
+		playSound(4307186075)
+		if espActive then
+			stopESP(btnESP)
+		else
+			startESP(btnESP)
+		end
+	end
+end)
+
+local espKeybind = Instance.new("TextBox")
+espKeybind.Size = UDim2.new(0, 80, 0, 40)
+espKeybind.Position = UDim2.new(1, -85, 0, 0)
+espKeybind.BackgroundTransparency = 0.6
+espKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
+espKeybind.Text = ""
+espKeybind.PlaceholderText = "F"
+espKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
+espKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
+espKeybind.Font = Enum.Font.GothamBlack
+espKeybind.TextSize = 20
+espKeybind.TextXAlignment = Enum.TextXAlignment.Center
+espKeybind.ClearTextOnFocus = true
+espKeybind.Parent = visualsPanel
+
+espKeybind.FocusLost:Connect(function(enterPressed)
+	local t = espKeybind.Text:upper():gsub("[^A-Z]", "")
+	if t:len() > 1 then t = t:sub(1, 1) end
+	espKeybind.Text = t
+	espKey = t
+	updateKeybinds()
+	if enterPressed then espKeybind:ReleaseFocus() end
+end)
+
+local extraPanel = Instance.new("Frame")
+extraPanel.Name = "Extra"
+extraPanel.Size = UDim2.new(1, 0, 1, 0)
+extraPanel.BackgroundTransparency = 1
+extraPanel.Visible = false
+extraPanel.Parent = contentArea
+
+btnTpShop = Instance.new("TextButton")
+btnTpShop.Size = UDim2.new(1, -90, 0, 40)
+btnTpShop.Position = UDim2.new(0, 0, 0, 0)
+btnTpShop.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
+btnTpShop.BackgroundTransparency = 0.35
+btnTpShop.BorderSizePixel = 0
+btnTpShop.AutoButtonColor = false
+btnTpShop.Text = "Tp Shop Here"
+btnTpShop.TextColor3 = Color3.fromRGB(240, 240, 255)
+btnTpShop.Font = Enum.Font.GothamBold
+btnTpShop.TextSize = 17
+btnTpShop.Parent = extraPanel
+
+btnTpShop.MouseEnter:Connect(function() playSound(408524543) end)
+btnTpShop.MouseButton1Click:Connect(function()
+	if shopKey ~= "" then
+		playSound(4307186075)
+		tpShopHere(btnTpShop)
+	end
+end)
+
+local shopKeybind = Instance.new("TextBox")
+shopKeybind.Size = UDim2.new(0, 80, 0, 40)
+shopKeybind.Position = UDim2.new(1, -85, 0, 0)
+shopKeybind.BackgroundTransparency = 0.6
+shopKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
+shopKeybind.Text = ""
+shopKeybind.PlaceholderText = "G"
+shopKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
+shopKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
+shopKeybind.Font = Enum.Font.GothamBlack
+shopKeybind.TextSize = 20
+shopKeybind.TextXAlignment = Enum.TextXAlignment.Center
+shopKeybind.ClearTextOnFocus = true
+shopKeybind.Parent = extraPanel
+
+shopKeybind.FocusLost:Connect(function(enterPressed)
+	local t = shopKeybind.Text:upper():gsub("[^A-Z]", "")
+	if t:len() > 1 then t = t:sub(1, 1) end
+	shopKeybind.Text = t
+	shopKey = t
+	updateKeybinds()
+	if enterPressed then shopKeybind:ReleaseFocus() end
+end)
+
+btnReset = Instance.new("TextButton")
+btnReset.Size = UDim2.new(1, -90, 0, 40)
+btnReset.Position = UDim2.new(0, 0, 0, 50)
+btnReset.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
+btnReset.BackgroundTransparency = 0.35
+btnReset.BorderSizePixel = 0
+btnReset.AutoButtonColor = false
+btnReset.Text = "Reset Character"
+btnReset.TextColor3 = Color3.fromRGB(240, 240, 255)
+btnReset.Font = Enum.Font.GothamBold
+btnReset.TextSize = 17
+btnReset.Parent = extraPanel
+
+btnReset.MouseEnter:Connect(function() playSound(408524543) end)
+btnReset.MouseButton1Click:Connect(function()
+	if resetKey ~= "" then
+		playSound(4307186075)
+		resetCharacter(btnReset)
+	end
+end)
+
+local resetKeybind = Instance.new("TextBox")
+resetKeybind.Size = UDim2.new(0, 80, 0, 40)
+resetKeybind.Position = UDim2.new(1, -85, 0, 50)
+resetKeybind.BackgroundTransparency = 0.6
+resetKeybind.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
+resetKeybind.Text = ""
+resetKeybind.PlaceholderText = "T"
+resetKeybind.PlaceholderColor3 = Color3.fromRGB(160, 160, 190)
+resetKeybind.TextColor3 = Color3.fromRGB(250, 250, 255)
+resetKeybind.Font = Enum.Font.GothamBlack
+resetKeybind.TextSize = 20
+resetKeybind.TextXAlignment = Enum.TextXAlignment.Center
+resetKeybind.ClearTextOnFocus = true
+resetKeybind.Parent = extraPanel
+
+resetKeybind.FocusLost:Connect(function(enterPressed)
+	local t = resetKeybind.Text:upper():gsub("[^A-Z]", "")
+	if t:len() > 1 then t = t:sub(1, 1) end
+	resetKeybind.Text = t
+	resetKey = t
+	updateKeybinds()
+	if enterPressed then resetKeybind:ReleaseFocus() end
+end)
+
+local profilePanel = Instance.new("Frame")
+profilePanel.Size = UDim2.new(0, 190, 1, -60)
+profilePanel.Position = UDim2.new(1, -200, 0, 50)
+profilePanel.BackgroundTransparency = 0.6
+profilePanel.BackgroundColor3 = Color3.fromRGB(30, 25, 45)
+profilePanel.Parent = frame
+
+local profileCorner = Instance.new("UICorner")
+profileCorner.CornerRadius = UDim.new(0, 12)
+profileCorner.Parent = profilePanel
+
+local avatarFrame = Instance.new("Frame")
+avatarFrame.Size = UDim2.new(0, 100, 0, 100)
+avatarFrame.Position = UDim2.new(0.5, -50, 0, 10)
+avatarFrame.BackgroundTransparency = 1
+avatarFrame.Parent = profilePanel
+
+local avatarCorner = Instance.new("UICorner")
+avatarCorner.CornerRadius = UDim.new(0, 10)
+avatarCorner.Parent = avatarFrame
+
+local avatarImage = Instance.new("ImageLabel")
+avatarImage.Size = UDim2.new(1, 0, 1, 0)
+avatarImage.BackgroundTransparency = 1
+avatarImage.Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=150&h=150"
+avatarImage.Parent = avatarFrame
+
+local nameLabel = Instance.new("TextLabel")
+nameLabel.Size = UDim2.new(1, -20, 0, 24)
+nameLabel.Position = UDim2.new(0, 10, 0, 120)
+nameLabel.BackgroundTransparency = 1
+nameLabel.Text = LocalPlayer.Name
+nameLabel.TextColor3 = Color3.fromRGB(240, 240, 255)
+nameLabel.Font = Enum.Font.GothamBold
+nameLabel.TextSize = 18
+nameLabel.Parent = profilePanel
+
+local timeLabel = Instance.new("TextLabel")
+timeLabel.Size = UDim2.new(1, -20, 0, 20)
+timeLabel.Position = UDim2.new(0, 10, 0, 145)
+timeLabel.BackgroundTransparency = 1
+timeLabel.Text = "Time Played: 00h 00m 00s"
+timeLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
+timeLabel.Font = Enum.Font.Gotham
+timeLabel.TextSize = 14
+timeLabel.Parent = profilePanel
+
+local startTime = os.clock()
+task.spawn(function()
+	while timeLabel and timeLabel.Parent do
+		local elapsed = os.clock() - startTime
+		timeLabel.Text = "Time Played: " .. formatTime(elapsed)
+		task.wait(1)
+	end
+end)
+
+-- Кнопка Set Default Keybinds — теперь ВНУТРИ правой панели, по центру внизу
+local btnSetDefaultContainer = Instance.new("Frame")
+btnSetDefaultContainer.Size = UDim2.new(1, -20, 0, 30) -- Занимает всю ширину панели с отступами
+btnSetDefaultContainer.Position = UDim2.new(0, 10, 1, -40) -- Отступ 10 слева, 40 снизу от нижнего края
+btnSetDefaultContainer.BackgroundTransparency = 1
+btnSetDefaultContainer.Parent = profilePanel
+
+local btnSetDefault = Instance.new("TextButton")
+btnSetDefault.Size = UDim2.new(1, 0, 1, 0)
+btnSetDefault.BackgroundColor3 = Color3.fromRGB(50, 45, 75)
+btnSetDefault.BackgroundTransparency = 0.4
+btnSetDefault.BorderSizePixel = 0
+btnSetDefault.AutoButtonColor = false
+btnSetDefault.Text = "Set Default Keybinds"
+btnSetDefault.TextColor3 = Color3.fromRGB(230, 230, 250)
+btnSetDefault.Font = Enum.Font.GothamBold
+btnSetDefault.TextSize = 14
+btnSetDefault.Parent = btnSetDefaultContainer
+
+local defaultStroke = Instance.new("UIStroke")
+defaultStroke.Color = Color3.fromRGB(120, 110, 160)
+defaultStroke.Thickness = 1.2
+defaultStroke.Transparency = 0.4
+defaultStroke.Parent = btnSetDefault
+
+btnSetDefault.MouseEnter:Connect(function()
+	playSound(408524543)
+end)
+
+btnSetDefault.MouseButton1Click:Connect(function()
+	playSound(4307186075)
+	jumpKey = "Q"
+	espKey = "F"
+	hideKey = "R"
+	resetKey = "T"
+	shopKey = "G"
+	jumpKeybind.Text = "Q"
+	espKeybind.Text = "F"
+	hideKeybind.Text = "R"
+	resetKeybind.Text = "T"
+	shopKeybind.Text = "G"
+	updateKeybinds()
+end)
+
+for i, btn in ipairs(tabButtons) do
+	btn.MouseButton1Click:Connect(function()
+		homePanel.Visible = (btn.Text == "Home")
+		stealPanel.Visible = (btn.Text == "Steal")
+		visualsPanel.Visible = (btn.Text == "Visuals")
+		extraPanel.Visible = (btn.Text == "Extra")
+		for _, b in ipairs(tabButtons) do
+			b.BackgroundColor3 = Color3.fromRGB(40, 35, 60)
+			b.TextColor3 = Color3.fromRGB(180, 180, 210)
+		end
+		btn.BackgroundColor3 = Color3.fromRGB(70, 60, 100)
+		btn.TextColor3 = Color3.fromRGB(240, 240, 255)
+	end)
+end
+
+local isCollapsed = false
+toggleBtn.MouseButton1Click:Connect(function()
+	isCollapsed = not isCollapsed
+	if isCollapsed then
+		frame.Size = UDim2.new(0, 500, 0, 46)
+		toggleBtn.Text = "+"
+		tabFrame.Visible = false
+		contentArea.Visible = false
+		profilePanel.Visible = false
+	else
+		frame.Size = UDim2.new(0, 500, 0, 340)
+		toggleBtn.Text = "−"
+		tabFrame.Visible = true
+		contentArea.Visible = true
+		profilePanel.Visible = true
+	end
+end)
+
+-- Постоянная фиксация поворота при Hide
+task.spawn(function()
+	while true do
+		if hideActive then
+			local char = LocalPlayer.Character
+			if char then
+				local root = char:FindFirstChild("HumanoidRootPart")
+				if root and originalCFrame then
+					local rotated = originalCFrame * CFrame.fromEulerAnglesXYZ(math.rad(-90), 0, 0)
+					root.CFrame = rotated + Vector3.new(0, -2, 0)
+				end
+			end
+		end
+		task.wait()
+	end
+end)
+
+local function fullCleanup()
+	if inputConnection then inputConnection:Disconnect() end
+	stopESP(btnESP)
+	if hideActive then
+		local char = LocalPlayer.Character
+		if char and char:FindFirstChild("Humanoid") then
+			char.Humanoid.PlatformStand = false
+		end
+	end
+	pcall(function() gui:Destroy() end)
+end
+
+closeBtn.MouseButton1Click:Connect(fullCleanup)
+game:BindToClose(fullCleanup)
+
 frame.Visible = true
